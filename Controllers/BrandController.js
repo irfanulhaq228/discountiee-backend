@@ -2,14 +2,30 @@ const brandModel = require("../Models/BrandModal.js");
 
 const getAllBrands = async (req, res) => {
     try {
-        const data = await brandModel.find().select("-password");
-        if (data?.length === 0) {
-            return res.status(400).json({ message: "no Data Found" })
-        };
-        return res.status(200).json({ message: "Data Fetched Successfully", data });
+        const query = { ...req.query };
+
+        if (query.status !== undefined) {
+            query.status = query.status === 'true';
+        }
+
+        if (query.category) {
+            const categories = Array.isArray(query.category)
+                ? query.category
+                : query.category.split(",");
+
+            query.category = { $in: categories };
+        }
+
+        const data = await brandModel.find(query).select("-password");
+
+        if (!data.length) {
+            return res.status(400).json({ message: "No data found" });
+        }
+
+        return res.status(200).json({ message: "Data fetched successfully", data });
     } catch (error) {
         console.log(error);
-        return res.status(500).json({ message: "Server Error!" })
+        return res.status(500).json({ message: "Server error!" });
     }
 };
 

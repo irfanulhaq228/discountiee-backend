@@ -2,10 +2,11 @@ const fs = require('fs');
 const path = require('path');
 const moment = require("moment");
 const postModel = require("../Models/PostModel.js");
+const brandModel = require('../Models/BrandModal.js');
 
 const createPost = async (req, res) => {
     try {
-        const { endDate, endTime, uploadDate, uploadTime, immediately, description, brand } = req.body;
+        const { endDate, endTime, uploadDate, uploadTime, immediately, description, brand, status } = req.body;
 
         const imagePaths = req.files.map(file => file.path);
         const newPost = await postModel.create({
@@ -16,7 +17,8 @@ const createPost = async (req, res) => {
             uploadTime,
             immediately,
             description,
-            brand
+            brand,
+            status
         });
 
         return res.status(200).json({ message: "Post created successfully", data: newPost });
@@ -30,16 +32,92 @@ const createPost = async (req, res) => {
 const getPostByBrand = async (req, res) => {
     try {
         const { id } = req.params;
-        const data = await postModel.find({ brand: id }).sort({ createdAt: -1 });
+        const filters = { brand: id, ...req.query };
 
-        if (data?.length === 0) {
-            return res.status(400).json({ message: "No posts found for this brand!" });
-        };
+        const data = await postModel.find(filters).sort({ createdAt: -1 });
 
         return res.status(200).json({ message: "Posts Fetched successfully", data });
 
     } catch (error) {
         console.log(error);
+        return res.status(500).json({ message: "Server Error!", error });
+    }
+};
+
+const getPostDetails = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const data = await postModel.findById(id).populate('brand');
+
+        return res.status(200).json({ message: "Post Fetched successfully", data });
+
+    } catch (error) {
+        console.log(error);
+        return res.status(500).json({ message: "Server Error!", error });
+    }
+};
+
+const getPostWithBrand = async (req, res) => {
+    try {
+        const { page = 1, ...filters } = req.query;
+        const limit = 10;
+        const skip = (page - 1) * limit;
+
+        const query = {};
+
+        for (const key in filters) {
+            query[key] = filters[key];
+        }
+
+        const data = await postModel.find(query).populate({
+            path: "brand",
+            select: "-password",
+        }).sort({ updatedAt: -1 }).skip(skip).limit(limit);
+
+        const total = await postModel.countDocuments(query);
+
+        return res.status(200).json({
+            message: "Posts fetched successfully",
+            data,
+            currentPage: Number(page),
+            totalPages: Math.ceil(total / limit),
+            totalItems: total,
+        });
+
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ message: "Server Error!", error });
+    }
+};
+
+const getPostsByCategory = async (req, res) => {
+    try {
+        const { category } = req.query;
+
+        if (!category) {
+            return res.status(400).json({ message: "Category is required" });
+        }
+
+        const brands = await brandModel.find({ category }).select('_id');
+
+        const brandIds = brands.map((brand) => brand._id);
+
+        const data = await postModel.find({ brand: { $in: brandIds } })
+            .populate({
+                path: "brand",
+                select: "-password",
+            })
+            .sort({ createdAt: -1 });
+
+        return res.status(200).json({
+            message: "Posts fetched successfully",
+            data,
+            totalItems: data.length,
+        });
+
+    } catch (error) {
+        console.error(error);
         return res.status(500).json({ message: "Server Error!", error });
     }
 };
@@ -66,7 +144,7 @@ const startPostExpirationChecker = () => {
     setInterval(async () => {
         try {
             const posts = await postModel.find({ status: { $in: ['active', 'stopped'] } });
-            const now = moment();
+            const now = moment().subtract(30, 'minutes');
 
             for (const post of posts) {
                 if (!post.endDate || !post.endTime) continue;
@@ -82,6 +160,28 @@ const startPostExpirationChecker = () => {
             console.error("Error checking post expiration:", error);
         }
     }, 2 * 60 * 1000);
+};
+
+const startPostActivationChecker = () => {
+    setInterval(async () => {
+        try {
+            const pendingPosts = await postModel.find({ status: "pending" });
+            const now = moment().subtract(30, 'minutes');
+
+            for (const post of pendingPosts) {
+                if (!post.uploadDate || !post.uploadTime) continue;
+
+                const uploadDateTime = moment(`${post.uploadDate} ${post.uploadTime}`, "ddd MMM DD YYYY h:mm A");
+                if (now.isSameOrAfter(uploadDateTime)) {
+                    post.status = "active";
+                    await post.save();
+                    console.log(`✅ Post ${post._id} activated`);
+                }
+            }
+        } catch (error) {
+            console.error("Error activating posts:", error);
+        }
+    }, 2 * 60 * 1000); // Run every 1 minute
 };
 
 const deletePostById = async (req, res) => {
@@ -116,10 +216,43 @@ const deletePostById = async (req, res) => {
     }
 };
 
+const getWishlistPosts = async (req, res) => {
+    try {
+        const { idWishList } = req.body;
+
+        if (!Array.isArray(idWishList) || idWishList.length === 0) {
+            return res.status(400).json({ message: "idWishList must be a non-empty array" });
+        };
+
+        const posts = await postModel.find({ _id: { $in: idWishList }, status: "active" }).populate({
+            path: "brand",
+            select: "-password",
+        });
+
+        const sortedPosts = idWishList.map(id => posts.find(post => post._id.toString() === id)).filter(Boolean);
+
+        return res.status(200).json({
+            message: "Wishlist posts fetched successfully",
+            data: sortedPosts,
+            totalItems: sortedPosts.length,
+        });
+
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ message: "Server Error!", error });
+    }
+};
+
+
 module.exports = {
     createPost,
     deletePostById,
     getPostByBrand,
+    getPostDetails,
+    getWishlistPosts,
+    getPostWithBrand,
     getPostStatusById,
-    startPostExpirationChecker
+    getPostsByCategory,
+    startPostExpirationChecker,
+    startPostActivationChecker,
 };

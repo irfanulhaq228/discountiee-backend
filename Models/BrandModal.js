@@ -9,6 +9,7 @@ const brandSchema = mongoose.Schema({
     country: String,
     password: String,
     address: String,
+    category: { type: mongoose.Schema.Types.ObjectId, ref: 'Category' },
     status: { type: Boolean, default: true }
 }, {
     timestamps: true
