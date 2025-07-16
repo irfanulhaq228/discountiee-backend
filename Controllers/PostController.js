@@ -60,26 +60,40 @@ const getPostDetails = async (req, res) => {
 
 const getPostWithBrand = async (req, res) => {
     try {
-        const { page = 1, ...filters } = req.query;
+        const { page = 1, cities, ...filters } = req.query;
         const limit = 10;
         const skip = (page - 1) * limit;
 
-        const query = {};
+        const query = { ...filters };
 
-        for (const key in filters) {
-            query[key] = filters[key];
+        let parsedCities = [];
+
+        if (cities) {
+            try {
+                parsedCities = JSON.parse(cities);
+            } catch (err) {
+                return res.status(400).json({ message: "Invalid cities format. Should be a stringified array." });
+            }
         }
 
-        const data = await postModel.find(query).populate({
-            path: "brand",
-            select: "-password",
-        }).sort({ updatedAt: -1 }).skip(skip).limit(limit);
+        const allPosts = await postModel.find(query)
+            .populate({ path: "brand", select: "-password" })
+            .sort({ updatedAt: -1 });
 
-        const total = await postModel.countDocuments(query);
+        let filteredPosts = allPosts;
+        if (Array.isArray(parsedCities) && parsedCities.length > 0) {
+            filteredPosts = allPosts.filter(post =>
+                post.brand && parsedCities.includes(post.brand.city)
+            );
+        }
+
+        const total = filteredPosts.length;
+
+        const paginatedPosts = filteredPosts.slice(skip, skip + limit);
 
         return res.status(200).json({
             message: "Posts fetched successfully",
-            data,
+            data: paginatedPosts,
             currentPage: Number(page),
             totalPages: Math.ceil(total / limit),
             totalItems: total,
@@ -93,16 +107,35 @@ const getPostWithBrand = async (req, res) => {
 
 const getPostsByCategory = async (req, res) => {
     try {
-        const { category } = req.query;
+        const { category, cities } = req.query;
 
         if (!category) {
             return res.status(400).json({ message: "Category is required" });
         }
 
-        const brands = await brandModel.find({ category }).select('_id');
+        // Parse cities if provided
+        let parsedCities = [];
+        if (cities) {
+            try {
+                parsedCities = JSON.parse(cities); // cities must be passed as a JSON stringified array
+            } catch (err) {
+                return res.status(400).json({ message: "Invalid cities format. Must be a stringified array." });
+            }
+        }
+
+        // First get all brands for the category
+        let brandFilter = { category };
+
+        // If cities array is not empty, filter brands by city
+        if (Array.isArray(parsedCities) && parsedCities.length > 0) {
+            brandFilter.city = { $in: parsedCities };
+        }
+
+        const brands = await brandModel.find(brandFilter).select('_id');
 
         const brandIds = brands.map((brand) => brand._id);
 
+        // Fetch posts whose brand is in the filtered brand list
         const data = await postModel.find({ brand: { $in: brandIds } })
             .populate({
                 path: "brand",
