@@ -32,6 +32,10 @@ const getAllBrands = async (req, res) => {
             }
         }
 
+        if (query.name) {
+            query.name = { $regex: query.name, $options: 'i' };
+        }
+
         delete query.cities;
 
         const data = await brandModel.find(query).select("-password");
