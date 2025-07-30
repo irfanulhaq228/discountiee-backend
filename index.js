@@ -3,6 +3,8 @@ const cors = require("cors");
 const dotenv = require("dotenv");
 dotenv.config();
 
+const PORT = process.env.PORT || 5100;
+
 const PostRouter = require("./Routes/PostRoute");
 const BrandRouter = require("./Routes/BrandRoute");
 const CategoryRouter = require("./Routes/CategoryRoutes");
@@ -19,15 +21,15 @@ app.use('/api/uploads', express.static('uploads'));
 connectDB();
 
 app.get("/", (req, res) => {
-    res.json({ message: "vps_settings_done" });
+    res.json({ message: "discoutiee-backend-success" });
 });
 
 app.use("/api/brand", BrandRouter);
 app.use("/api/post", PostRouter);
 app.use("/api/category", CategoryRouter);
 
-app.listen(process.env.PORT, () => {
-    console.log(`✅ Server runs at port ${process.env.PORT}`);
+app.listen(PORT, () => {
+    console.log(`✅ Server runs at port ${PORT}`);
     startPostExpirationChecker();
     startPostActivationChecker();
 });
