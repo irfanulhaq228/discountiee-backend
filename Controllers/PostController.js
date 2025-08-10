@@ -136,7 +136,7 @@ const getPostsByCategory = async (req, res) => {
         const brandIds = brands.map((brand) => brand._id);
 
         // Fetch posts whose brand is in the filtered brand list
-        const data = await postModel.find({ brand: { $in: brandIds } })
+        const data = await postModel.find({ brand: { $in: brandIds }, status: 'active' })
             .populate({
                 path: "brand",
                 select: "-password",
