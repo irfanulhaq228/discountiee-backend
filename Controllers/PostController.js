@@ -173,6 +173,66 @@ const getPostStatusById = async (req, res) => {
     }
 };
 
+const updatePostById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { endDate, endTime, uploadDate, uploadTime, immediately, description, brand, status, existingImages } = req.body;
+
+        // Find the existing post
+        const existingPost = await postModel.findById(id);
+        if (!existingPost) {
+            return res.status(400).json({ message: "No post found" });
+        }
+
+        // Handle new uploaded images
+        let newImagePaths = [];
+        if (req.files && req.files.length > 0) {
+            newImagePaths = req.files.map(file => file.path);
+        }
+
+        // Handle existing images
+        let finalImages = [];
+        if (existingImages) {
+            try {
+                const parsedExistingImages = JSON.parse(existingImages);
+                finalImages = [...parsedExistingImages];
+            } catch (error) {
+                console.log("Error parsing existing images:", error);
+                // If parsing fails, keep the original images
+                finalImages = [...existingPost.images];
+            }
+        } else {
+            // If no existing images specified, keep the original images
+            finalImages = [...existingPost.images];
+        }
+
+        // Add new images to the final array
+        finalImages = [...finalImages, ...newImagePaths];
+
+        // Prepare update data
+        const updateData = {
+            images: finalImages,
+            endDate,
+            endTime,
+            uploadDate,
+            uploadTime,
+            immediately: immediately === 'true' || immediately === true,
+            description,
+            brand,
+            status
+        };
+
+        // Update the post
+        const updatedPost = await postModel.findByIdAndUpdate(id, updateData, { new: true });
+
+        return res.status(200).json({ message: "Updated successfully", data: updatedPost });
+
+    } catch (error) {
+        console.log(error);
+        return res.status(500).json({ message: "Server Error!", error });
+    }
+};
+
 const startPostExpirationChecker = () => {
     setInterval(async () => {
         try {
@@ -282,6 +342,7 @@ module.exports = {
     deletePostById,
     getPostByBrand,
     getPostDetails,
+    updatePostById,
     getWishlistPosts,
     getPostWithBrand,
     getPostStatusById,
